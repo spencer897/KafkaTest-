@@ -1,14 +1,18 @@
+const http = require('http')
 const fs = require('fs'); // require file system module  
 const express = require('express'); // install express 
+const socketio = require('socket.io')
 const app = express(); // create an instance of express 
 const { Kafka, logLevel } = require('kafkajs'); // install kafkajs
-const server = require('http').createServer(app); // create a server 
-const http = require('http').createServer(app);  // create a second server 
-const websockets = require('socket.io'); // install socket.io 
-const io = websockets(http); // create an instance of websockets 
+//const server = require('http').createServer(app); // create a server 
+//const http = require('http').createServer(app);  // create a second server 
+//const websockets = require('socket.io'); // install socket.io 
+// const io = websockets(http); // create an instance of websockets 
 const { exec } = require('child_process'); // needed to simulate concurrency for websockets; no need to install, bundled with node.js 
-const socketio_port = '33334'; // intialize a port on which the server will listen below 
+// const socketio_port = 3030; // intialize a port on which the server will listen below 
 
+const server = http.createServer(app)
+const io = socketio(server)
 // Initialize a new connection to the Kafka cluster which lives at port 9092 
 const kafka = new Kafka({
   clientId: 'my-app',
@@ -16,7 +20,7 @@ const kafka = new Kafka({
   connectionTimeout: 3000
 })
 
-server.listen(44444); // one of the servers is listening on port 44444
+ // one of the servers is listening on port 44444
 
 // serve main html file to the client for any get requst to the server 
 app.get('/', function (req, res) {
@@ -26,6 +30,7 @@ app.get('/', function (req, res) {
 // opening a connection to the WebSocket server itself 
 // upon receiving a connection, the server will start listening
 io.on('connection', function(socket){ // have to bounce to ext for now (what does this mean???)
+    console.log('connected!')
     // create first kafka consumer  
     // only one consumer per consumer group 
     const consumer_truck_1 = kafka.consumer({ groupId: 'truck1-group' , fromOffset: 0})
@@ -45,7 +50,15 @@ io.on('connection', function(socket){ // have to bounce to ext for now (what doe
             // (which matches the truck_1's sensors topic using the message value)
             eachMessage: async ({ topic, partition, message }) => {
                 socket.emit(truck_1_topic, `${message.value}`); // send every read message to all the subscribed clients 
+                
+                io.sockets.emit
+                |
+                v
                 socket.broadcast.emit(truck_1_topic, `${message.value}`); // do we actually need this 
+
+                socket.on('disconnect',()=>{
+                  console.log('this guy is gone')
+                })
             },
         });
     }
@@ -197,9 +210,9 @@ io.on('connection', function(socket){ // have to bounce to ext for now (what doe
 });
 
 //Express Web Endpoints / REST API's
-http.listen(socketio_port, function(){
-  console.log('listening on *:'+socketio_port);
-});
+// http.listen(socketio_port, function(){
+//   console.log('listening on *:'+socketio_port);
+// });
 
 const errorTypes = ['unhandledRejection', 'uncaughtException']
 const signalTraps = ['SIGTERM', 'SIGINT', 'SIGUSR2']
@@ -227,6 +240,13 @@ signalTraps.map(type => {
   })
 })
 
+server.on('error', (err)=>{
+  console.log(err)
+})
+
+server.listen(8080, ()=>{
+  console.log('server listening on 8080')
+});
 // const httpServer = require("http").createServer();
 // const io = require("socket.io")(httpServer, {
 //   // ...
